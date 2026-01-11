@@ -14,7 +14,7 @@ export async function updateSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
@@ -29,17 +29,7 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // IMPORTANT: Avoid writing any logic between createServerClient and
-  // supabase.auth.getUser(). A simple mistake could make your app slow
-  // or leak data.
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // Redirect to login if accessing protected routes without session
-  // Currently, all routes are public (login, signup, etc.)
-  // Add protected routes here if needed in the future
+  await supabase.auth.getUser();
 
   return supabaseResponse;
 }
