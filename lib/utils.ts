@@ -37,13 +37,13 @@ export function isValidRedirectUrl(url: string): boolean {
  */
 export function getRedirectUrl(searchParams: URLSearchParams): string {
   const redirect = searchParams.get('redirect');
-  
+
   if (redirect && isValidRedirectUrl(redirect)) {
     return redirect;
   }
-  
-  // Default to dashboard
-  return process.env.NEXT_PUBLIC_DASHBOARD_URL || '/';
+
+  // Default to home page (shows apps list and subscriptions)
+  return '/';
 }
 
 /**
