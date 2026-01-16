@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { AuthCard, Button } from '@/components';
-import { CheckCircle, ArrowRight, Smartphone, Monitor } from 'lucide-react';
+import { useEffect } from 'react';
+import { AuthCard } from '@/components';
+import { CheckCircle, Smartphone } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface SuccessClientProps {
@@ -14,10 +14,7 @@ interface SuccessClientProps {
 
 export function SuccessClient({
   appDisplayName,
-  returnUrl,
-  isMobileApp,
 }: SuccessClientProps) {
-  const [countdown, setCountdown] = useState(10);
 
   // Confetti effect on mount
   useEffect(() => {
@@ -28,24 +25,6 @@ export function SuccessClient({
       colors: ['#F6C343', '#1B2B27', '#10B981'],
     });
   }, []);
-
-  // Auto-redirect countdown
-  useEffect(() => {
-    if (countdown <= 0) {
-      handleReturn();
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      setCountdown(countdown - 1);
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [countdown]);
-
-  const handleReturn = () => {
-    window.location.href = returnUrl;
-  };
 
   return (
     <AuthCard
@@ -72,39 +51,19 @@ export function SuccessClient({
       {/* Return Instructions */}
       <div className="bg-onsite-gray rounded-lg p-4 mb-6">
         <div className="flex items-center gap-3 mb-2">
-          {isMobileApp ? (
-            <Smartphone className="w-5 h-5 text-onsite-accent" />
-          ) : (
-            <Monitor className="w-5 h-5 text-onsite-accent" />
-          )}
+          <Smartphone className="w-5 h-5 text-onsite-accent" />
           <span className="font-medium text-onsite-dark">
-            {isMobileApp ? 'Return to App' : 'Return to Website'}
+            Return to App
           </span>
         </div>
         <p className="text-sm text-onsite-text-secondary">
-          {isMobileApp
-            ? 'Click the button below to return to the app and start using premium features.'
-            : 'You will be redirected automatically or click the button below.'}
+          You can now return to the app and enjoy all premium features.
         </p>
       </div>
 
-      {/* Return Button */}
-      <Button
-        onClick={handleReturn}
-        fullWidth
-        variant="accent"
-        className="mb-4"
-      >
-        <ArrowRight className="w-5 h-5" />
-        {isMobileApp ? 'Open App' : 'Return to Website'}
-        <span className="text-sm opacity-75">({countdown}s)</span>
-      </Button>
-
-      {/* Help Text */}
-      <p className="text-xs text-center text-onsite-text-muted">
-        {isMobileApp
-          ? 'If the app doesn\'t open automatically, make sure it\'s installed on your device.'
-          : 'You will be redirected automatically in a few seconds.'}
+      {/* Info Text */}
+      <p className="text-sm text-center text-onsite-text-muted mb-4">
+        You may close this window and return to the application.
       </p>
 
       {/* Manage Subscription Link */}
