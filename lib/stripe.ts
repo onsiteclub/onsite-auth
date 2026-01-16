@@ -109,7 +109,8 @@ export async function createCheckoutSession({
     phone_number_collection: {
       enabled: true,
     },
-    customer_creation: 'always',
+    // Note: customer_creation is not needed in subscription mode
+    // Stripe automatically creates a customer for subscriptions
   };
 
   // If customer already exists, use their ID
