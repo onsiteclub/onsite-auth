@@ -4,7 +4,6 @@ import { AuthCard } from '@/components';
 import {
   Calculator,
   Clock,
-  LayoutDashboard,
   CheckCircle,
   ArrowRight,
   Settings,
@@ -35,13 +34,6 @@ const apps = [
     description: 'Time tracking and work hours management',
     icon: Clock,
     color: 'bg-green-100 text-green-600',
-  },
-  {
-    id: 'dashboard',
-    name: 'OnSite Dashboard',
-    description: 'Complete dashboard with analytics',
-    icon: LayoutDashboard,
-    color: 'bg-purple-100 text-purple-600',
   },
 ];
 

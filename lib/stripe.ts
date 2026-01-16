@@ -12,7 +12,7 @@ export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 /**
  * App configuration with Stripe price IDs
  */
-export type AppName = 'calculator' | 'timekeeper' | 'dashboard';
+export type AppName = 'calculator' | 'timekeeper';
 
 export interface AppConfig {
   name: string;
@@ -41,13 +41,6 @@ export function getAppConfig(app: AppName): AppConfig | null {
       successUrl: process.env.NEXT_PUBLIC_TIMEKEEPER_SCHEME || 'onsiteclub://timekeeper',
       cancelUrl: process.env.NEXT_PUBLIC_TIMEKEEPER_SCHEME || 'onsiteclub://timekeeper',
     },
-    dashboard: {
-      name: 'dashboard',
-      displayName: 'OnSite Dashboard Pro',
-      priceId: process.env.STRIPE_PRICE_DASHBOARD || '',
-      successUrl: process.env.NEXT_PUBLIC_DASHBOARD_URL || 'https://app.onsiteclub.ca',
-      cancelUrl: process.env.NEXT_PUBLIC_DASHBOARD_URL || 'https://app.onsiteclub.ca',
-    },
   };
 
   return configs[app] || null;
@@ -57,7 +50,7 @@ export function getAppConfig(app: AppName): AppConfig | null {
  * Validate if app name is valid
  */
 export function isValidApp(app: string): app is AppName {
-  return ['calculator', 'timekeeper', 'dashboard'].includes(app);
+  return ['calculator', 'timekeeper'].includes(app);
 }
 
 /**
