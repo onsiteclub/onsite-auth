@@ -2,15 +2,21 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { isValidApp, getAppConfig, createCheckoutSession, AppName } from '@/lib/stripe';
 import { CheckoutMessage } from './CheckoutMessage';
+import { validateCheckoutToken } from '@/lib/checkout-token';
 
 interface CheckoutPageProps {
   params: Promise<{ app: string }>;
-  searchParams: Promise<{ canceled?: string }>;
+  searchParams: Promise<{
+    canceled?: string;
+    token?: string;           // JWT token from app
+    prefilled_email?: string; // Email for Stripe prefill
+    redirect?: string;        // Return URL after checkout
+  }>;
 }
 
 export default async function CheckoutPage({ params, searchParams }: CheckoutPageProps) {
   const { app } = await params;
-  const { canceled } = await searchParams;
+  const { canceled, token, prefilled_email, redirect: returnRedirect } = await searchParams;
 
   // Validate app name
   if (!isValidApp(app)) {
@@ -22,27 +28,53 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     redirect('/');
   }
 
-  // Check if user is authenticated
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // Determine user identity - prefer JWT token from app over session cookie
+  let userId: string;
+  let userEmail: string;
 
-  if (!user) {
-    // Redirect to login with return URL
-    const returnUrl = encodeURIComponent(`/checkout/${app}`);
-    redirect(`/login?redirect=${returnUrl}`);
-  }
+  if (token) {
+    // App sent a JWT token - validate it
+    const tokenResult = await validateCheckoutToken(token);
 
-  // Check if user already has an active subscription for this app
-  const { data: existingSubscription } = await supabase
-    .from('subscriptions')
-    .select('stripe_customer_id, status')
-    .eq('user_id', user.id)
-    .eq('app', app)
-    .single();
+    if (!tokenResult.valid) {
+      console.error('Invalid checkout token:', tokenResult.error);
+      return (
+        <CheckoutMessage
+          type="error"
+          appDisplayName={appConfig.displayName}
+          retryUrl={`/checkout/${app}`}
+        />
+      );
+    }
 
-  if (existingSubscription?.status === 'active' || existingSubscription?.status === 'trialing') {
-    // User already has subscription, redirect to manage page
-    redirect(`/manage?app=${app}`);
+    // Validate that token app matches URL app
+    if (tokenResult.app !== app) {
+      console.error('Token app mismatch:', tokenResult.app, 'vs', app);
+      return (
+        <CheckoutMessage
+          type="error"
+          appDisplayName={appConfig.displayName}
+          retryUrl={`/checkout/${app}`}
+        />
+      );
+    }
+
+    userId = tokenResult.userId;
+    userEmail = prefilled_email || tokenResult.email;
+
+  } else {
+    // No token - fall back to session cookie (legacy flow)
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      // Redirect to login with return URL
+      const returnUrl = encodeURIComponent(`/checkout/${app}`);
+      redirect(`/login?redirect=${returnUrl}`);
+    }
+
+    userId = user.id;
+    userEmail = user.email || '';
   }
 
   // If user canceled, show message with retry option
@@ -51,7 +83,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
       <CheckoutMessage
         type="canceled"
         appDisplayName={appConfig.displayName}
-        retryUrl={`/checkout/${app}`}
+        retryUrl={`/checkout/${app}${token ? `?token=${token}` : ''}`}
       />
     );
   }
@@ -63,9 +95,8 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   try {
     const session = await createCheckoutSession({
       app: app as AppName,
-      userId: user.id,
-      userEmail: user.email || '',
-      customerId: existingSubscription?.stripe_customer_id,
+      userId: userId,
+      userEmail: userEmail,
     });
     checkoutUrl = session.url;
   } catch (error) {
@@ -79,7 +110,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
       <CheckoutMessage
         type="error"
         appDisplayName={appConfig.displayName}
-        retryUrl={`/checkout/${app}`}
+        retryUrl={`/checkout/${app}${token ? `?token=${token}` : ''}`}
       />
     );
   }
