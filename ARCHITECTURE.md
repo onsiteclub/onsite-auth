@@ -27,35 +27,62 @@ This is **NOT** a user-facing application. Users never navigate directly to `aut
 ## Flow Diagram
 
 ```
-┌─────────────────────┐
-│  OnSite Calculator  │
-│  (Mobile App)       │
-└──────────┬──────────┘
-           │ User clicks "Upgrade"
-           ▼
-┌─────────────────────────────────────┐
-│  auth.onsiteclub.ca/checkout/calculator  │
-│  (This App)                              │
-└──────────┬──────────────────────────────┘
-           │ Checks authentication
-           │ Creates Stripe session
-           ▼
-┌─────────────────────┐
-│  Stripe Checkout    │
-│  (Payment Page)     │
-└──────────┬──────────┘
-           │ Payment completed
-           ▼
-┌─────────────────────────────────────┐
-│  Stripe Webhook                          │
-│  → auth.onsiteclub.ca/api/webhooks/stripe │
-└──────────┬──────────────────────────────┘
-           │ Saves subscription to Supabase
-           ▼
-┌─────────────────────┐
-│  Success Page       │
-│  User returns to app│
-└─────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        CALCULATOR APP                           │
+├─────────────────────────────────────────────────────────────────┤
+│  1. User opens app / logs in                                    │
+│  2. App checks Supabase: SELECT status FROM subscriptions       │
+│     WHERE user_id = X AND app = 'calculator'                    │
+│  3. If status = 'active' or 'trialing':                         │
+│     → Enable premium features (Voice Mode)                      │
+│     → DO NOT show upgrade button                                │
+│  4. If no subscription or status != active:                     │
+│     → Disable premium features                                  │
+│     → Show upgrade button                                       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ User clicks "Upgrade" (only if not premium)
+                              │ App generates signed JWT token
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  AUTH HUB: /checkout/calculator?token=JWT                       │
+├─────────────────────────────────────────────────────────────────┤
+│  1. Validates JWT signature (CHECKOUT_JWT_SECRET)               │
+│  2. Extracts user_id from token                                 │
+│  3. Creates Stripe Checkout session with user_id in metadata    │
+│  4. Redirects to Stripe                                         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  STRIPE CHECKOUT                                                │
+│  User enters payment info                                       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ Payment completed
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  STRIPE WEBHOOK → auth.onsiteclub.ca/api/webhooks/stripe        │
+├─────────────────────────────────────────────────────────────────┤
+│  1. Receives checkout.session.completed event                   │
+│  2. Extracts user_id from metadata                              │
+│  3. Saves to Supabase: subscriptions table                      │
+│     (user_id, app, status='active', period_end, etc.)           │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  SUCCESS PAGE → User returns to app                             │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  CALCULATOR APP (on return)                                     │
+│  1. Queries subscriptions table again                           │
+│  2. Finds status = 'active'                                     │
+│  3. Enables premium features                                    │
+│  4. Hides upgrade button                                        │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -130,6 +157,7 @@ onsite-auth/
 │
 ├── lib/                          # Utilities and configurations
 │   ├── stripe.ts                 # Stripe client & helpers
+│   ├── checkout-token.ts         # JWT token validation for cross-app auth
 │   └── supabase/
 │       ├── client.ts             # Browser Supabase client
 │       ├── server.ts             # Server Supabase client
@@ -165,12 +193,20 @@ Handles Stripe events:
 - `customer.subscription.deleted` - Marks subscription as canceled
 - `invoice.payment_failed` - Marks subscription as past_due
 
+### `/lib/checkout-token.ts`
+JWT token validation for secure cross-app authentication:
+- Validates HMAC-SHA256 signature
+- Checks token expiration (5 minutes)
+- Extracts user_id, email, app from token payload
+
 ### `/app/checkout/[app]/page.tsx`
 Dynamic route that:
 1. Validates app name (calculator, timekeeper)
-2. Checks if user is authenticated
-3. Creates Stripe checkout session
+2. Validates JWT token from app (preferred) or falls back to session cookie
+3. Creates Stripe checkout session with user_id in metadata
 4. Redirects to Stripe
+
+**Important:** This page does NOT check if user already has a subscription. That is the app's responsibility. The auth hub only processes payments.
 
 ### `/middleware.ts`
 Protects routes and manages auth sessions.
@@ -228,6 +264,11 @@ NEXT_PUBLIC_TIMEKEEPER_SCHEME=onsiteclub://timekeeper
 
 # Security
 ALLOWED_REDIRECT_DOMAINS=onsiteclub.ca,app.onsiteclub.ca
+
+# Cross-App JWT Authentication
+# Shared secret with Calculator/Timekeeper apps for secure checkout
+# Must be the same value in both auth hub and app's Vercel environment
+CHECKOUT_JWT_SECRET=your-secret-key-min-32-chars
 ```
 
 ---
@@ -272,18 +313,22 @@ ALLOWED_REDIRECT_DOMAINS=onsiteclub.ca,app.onsiteclub.ca
 
 ## Integration with Other Apps
 
+### Responsibilities
+
+| Responsibility | Who |
+|----------------|-----|
+| Check if user has active subscription | **App** |
+| Show/hide upgrade button | **App** |
+| Generate JWT token for checkout | **App** |
+| Validate JWT and redirect to Stripe | **Auth Hub** |
+| Process payment | **Stripe** |
+| Save subscription to database | **Auth Hub** (webhook) |
+| Query subscription status | **App** |
+
 ### OnSite Calculator (Mobile App)
 
-**To redirect user to checkout:**
+**1. Check subscription status (on app start / after login):**
 ```javascript
-const checkoutUrl = 'https://auth.onsiteclub.ca/checkout/calculator';
-// Open in browser or WebView
-Linking.openURL(checkoutUrl);
-```
-
-**To check subscription status:**
-```javascript
-// Call your backend, which calls Supabase
 const { data } = await supabase
   .from('subscriptions')
   .select('status')
@@ -291,14 +336,53 @@ const { data } = await supabase
   .eq('app', 'calculator')
   .single();
 
-const hasAccess = data?.status === 'active' || data?.status === 'trialing';
+const isPremium = data?.status === 'active' || data?.status === 'trialing';
+
+if (isPremium) {
+  enableVoiceMode();
+  hideUpgradeButton();  // IMPORTANT: Don't show upgrade if already premium
+} else {
+  disableVoiceMode();
+  showUpgradeButton();
+}
 ```
+
+**2. Redirect to checkout (only if NOT premium):**
+```javascript
+// Generate JWT token with user identity
+const token = generateCheckoutToken({
+  sub: userId,           // user_id from Supabase
+  email: userEmail,
+  app: 'calculator',
+  iat: Math.floor(Date.now() / 1000),
+  exp: Math.floor(Date.now() / 1000) + 300,  // 5 minutes
+  jti: crypto.randomUUID(),
+});
+
+// Redirect to auth hub with token
+const checkoutUrl = `https://auth.onsiteclub.ca/checkout/calculator?token=${token}`;
+Linking.openURL(checkoutUrl);
+```
+
+**JWT Token Structure:**
+```json
+{
+  "sub": "550e8400-e29b-41d4-a716-446655440000",  // user_id
+  "email": "user@example.com",
+  "app": "calculator",
+  "iat": 1705432800,      // issued at
+  "exp": 1705433100,      // expires in 5 min
+  "jti": "unique-id"      // anti-replay
+}
+```
+
+**Important:** The JWT must be signed with `CHECKOUT_JWT_SECRET` using HMAC-SHA256.
 
 ### OnSite Timekeeper (Mobile App)
 
 Same as above, but use:
-- Checkout URL: `https://auth.onsiteclub.ca/checkout/timekeeper`
-- App filter: `.eq('app', 'timekeeper')`
+- App name: `'timekeeper'`
+- Checkout URL: `https://auth.onsiteclub.ca/checkout/timekeeper?token=JWT`
 
 ---
 
@@ -376,6 +460,11 @@ Set in Vercel Dashboard → Settings → Environment Variables
 - Webhook uses signature verification (`STRIPE_WEBHOOK_SECRET`)
 - Service role key only used server-side for webhook operations
 - CORS and redirect domain validation
+- **JWT Token Authentication** for cross-app checkout:
+  - Signed with HMAC-SHA256 using shared secret (`CHECKOUT_JWT_SECRET`)
+  - Tokens expire in 5 minutes
+  - Contains unique `jti` (JWT ID) for anti-replay protection
+  - Prevents session mixing between different users
 
 ---
 
@@ -386,6 +475,13 @@ Set in Vercel Dashboard → Settings → Environment Variables
 2. Verify `STRIPE_PRICE_*` environment variable is set
 3. Verify Stripe API keys are correct
 4. Check if product/price exists in Stripe
+5. If using JWT token: verify `CHECKOUT_JWT_SECRET` matches between app and auth hub
+
+### Invalid Token Error
+1. Verify `CHECKOUT_JWT_SECRET` is the same in both projects (app and auth hub)
+2. Check token expiration (tokens are valid for 5 minutes only)
+3. Verify JWT structure has all required fields: `sub`, `email`, `app`, `iat`, `exp`, `jti`
+4. Check Vercel Logs for specific validation error
 
 ### Webhook Not Saving Data
 1. Check Stripe Webhook logs for errors
