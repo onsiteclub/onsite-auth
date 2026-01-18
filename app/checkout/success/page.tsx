@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
 import { isValidApp, getAppConfig } from '@/lib/stripe';
 import { SuccessClient } from './SuccessClient';
 
@@ -18,21 +17,6 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
   const appConfig = getAppConfig(app);
   if (!appConfig) {
     redirect('/');
-  }
-
-  // Check authentication (only for web flow without redirect)
-  // For mobile deep link flow, user may not have session cookie
-  let needsAuth = false;
-  if (!returnRedirect) {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      needsAuth = true;
-    }
-  }
-
-  if (needsAuth) {
-    redirect('/login');
   }
 
   // Get return URL - prefer explicit redirect parameter over config
