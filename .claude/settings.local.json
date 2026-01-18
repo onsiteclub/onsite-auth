@@ -4,7 +4,11 @@
       "Bash(ls:*)",
       "Bash(find:*)",
       "Bash(npm run build:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(git push:*)",
+      "Bash(gh auth login:*)",
+      "Bash(git config:*)"
     ]
   }
 }

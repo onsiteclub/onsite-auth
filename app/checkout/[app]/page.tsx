@@ -34,10 +34,12 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
 
   if (token) {
     // App sent a JWT token - validate it
+    console.log('[Checkout] Validating token for app:', app);
     const tokenResult = await validateCheckoutToken(token);
+    console.log('[Checkout] Token validation result:', JSON.stringify(tokenResult));
 
     if (!tokenResult.valid) {
-      console.error('Invalid checkout token:', tokenResult.error);
+      console.error('[Checkout] Invalid checkout token:', tokenResult.error);
       return (
         <CheckoutMessage
           type="error"
@@ -93,15 +95,17 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   let checkoutError: Error | null = null;
 
   try {
+    console.log('[Checkout] Creating Stripe session for:', { app, userId, userEmail, returnRedirect });
     const session = await createCheckoutSession({
       app: app as AppName,
       userId: userId,
       userEmail: userEmail,
       returnRedirect: returnRedirect,
     });
+    console.log('[Checkout] Stripe session created:', session.id);
     checkoutUrl = session.url;
   } catch (error) {
-    console.error('Checkout error:', error);
+    console.error('[Checkout] Stripe error:', error);
     checkoutError = error as Error;
   }
 

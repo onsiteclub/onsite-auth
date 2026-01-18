@@ -75,8 +75,11 @@ async function verifySignature(data: string, signature: string, secret: string):
  * @returns Validation result with user data if valid, or error if invalid
  */
 export async function validateCheckoutToken(token: string): Promise<TokenValidationResult> {
+  console.log('[JWT] Starting token validation');
+  console.log('[JWT] SECRET configured:', !!JWT_SECRET, 'length:', JWT_SECRET?.length);
+
   if (!JWT_SECRET) {
-    console.error('CHECKOUT_JWT_SECRET is not configured');
+    console.error('[JWT] CHECKOUT_JWT_SECRET is not configured');
     return { valid: false, error: 'Server configuration error' };
   }
 
@@ -84,6 +87,7 @@ export async function validateCheckoutToken(token: string): Promise<TokenValidat
     // 1. Split token into parts
     const parts = token.split('.');
     if (parts.length !== 3) {
+      console.error('[JWT] Invalid token format - parts:', parts.length);
       return { valid: false, error: 'Invalid token format' };
     }
 
@@ -91,7 +95,9 @@ export async function validateCheckoutToken(token: string): Promise<TokenValidat
 
     // 2. Verify signature
     const dataToVerify = `${header}.${payload}`;
+    console.log('[JWT] Verifying signature...');
     const isValid = await verifySignature(dataToVerify, signature, JWT_SECRET);
+    console.log('[JWT] Signature valid:', isValid);
 
     if (!isValid) {
       return { valid: false, error: 'Invalid signature' };
@@ -99,9 +105,11 @@ export async function validateCheckoutToken(token: string): Promise<TokenValidat
 
     // 3. Decode payload
     const decodedPayload: CheckoutTokenPayload = JSON.parse(base64urlDecode(payload));
+    console.log('[JWT] Decoded payload:', JSON.stringify(decodedPayload));
 
     // 4. Verify expiration
     const now = Math.floor(Date.now() / 1000);
+    console.log('[JWT] Checking expiration - now:', now, 'exp:', decodedPayload.exp, 'diff:', decodedPayload.exp - now);
     if (decodedPayload.exp < now) {
       return { valid: false, error: 'Token expired' };
     }
