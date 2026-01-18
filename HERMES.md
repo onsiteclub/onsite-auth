@@ -60,6 +60,47 @@
 
 ---
 
+## [LOCKED] Anti-Duct-Tape Rules
+
+### REGRA 1: Anti-Duct-Tape (Geral)
+
+> **NUNCA "fazer passar" — sempre "fazer certo"**
+
+Antes de implementar qualquer fix:
+1. Identificar a **CAUSA RAIZ**, não o sintoma
+2. Perguntar: "Essa solução preserva ou sacrifica funcionalidade?"
+3. Perguntar: "Estou removendo código/dados para evitar um erro?"
+4. Se a resposta for SIM → **PARAR e repensar**
+
+```
+O objetivo nunca é "ausência de erro".
+O objetivo é "presença de valor alinhado com a missão".
+
+Caminho fácil ≠ Caminho certo
+```
+
+### REGRA 2: Schema Supabase (Específica)
+
+> **NUNCA sacrificar dados para resolver erros de schema**
+
+Se um erro indicar:
+- `"Column X does not exist"`
+- `"Could not find column X"`
+- `"PGRST204"` ou similar
+
+**A solução CORRETA é:**
+→ Reportar a Blue para criar migration que ADICIONE a coluna ao schema
+
+**A solução PROIBIDA é:**
+→ Remover o campo do código para "fazer passar"
+
+```
+Dados que APIs externas (Stripe, etc.) nos enviam são VALIOSOS.
+O schema se adapta aos dados. O código não descarta dados.
+```
+
+---
+
 ## Purpose
 
 **Auth Hub is NOT a user-facing application.** Users never navigate directly to `auth.onsiteclub.ca`. It serves as a **payment gateway** that:
