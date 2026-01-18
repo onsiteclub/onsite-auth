@@ -40,10 +40,10 @@ export async function GET(request: NextRequest) {
 
     // Get subscription for this user and app
     const { data: subscription } = await supabase
-      .from('subscriptions')
+      .from('billing_subscriptions')
       .select('status, current_period_end, cancel_at_period_end')
       .eq('user_id', user.id)
-      .eq('app', app)
+      .eq('app_name', app)
       .single();
 
     // No subscription found

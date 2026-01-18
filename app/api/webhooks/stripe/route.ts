@@ -107,11 +107,11 @@ async function handleCheckoutCompleted(
   };
 
   const { error } = await supabase
-    .from('subscriptions')
+    .from('billing_subscriptions')
     .upsert(
       {
         user_id: userId,
-        app: app,
+        app_name: app,
         stripe_customer_id: customerId,
         stripe_subscription_id: subscriptionId,
         stripe_price_id: subscription.items.data[0]?.price.id,
@@ -123,7 +123,7 @@ async function handleCheckoutCompleted(
         updated_at: new Date().toISOString(),
       },
       {
-        onConflict: 'user_id,app',
+        onConflict: 'user_id,app_name',
       }
     );
 
@@ -150,8 +150,8 @@ async function handleSubscriptionUpdated(
   if (!app || !userId) {
     // Try to find by subscription ID
     const { data: existingSub } = await supabase
-      .from('subscriptions')
-      .select('user_id, app')
+      .from('billing_subscriptions')
+      .select('user_id, app_name')
       .eq('stripe_subscription_id', subscription.id)
       .single();
 
@@ -162,7 +162,7 @@ async function handleSubscriptionUpdated(
 
     // Update using found record
     const { error } = await supabase
-      .from('subscriptions')
+      .from('billing_subscriptions')
       .update({
         status: subscription.status,
         current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
@@ -182,7 +182,7 @@ async function handleSubscriptionUpdated(
   }
 
   const { error } = await supabase
-    .from('subscriptions')
+    .from('billing_subscriptions')
     .update({
       status: subscription.status,
       current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
@@ -191,7 +191,7 @@ async function handleSubscriptionUpdated(
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', userId)
-    .eq('app', app);
+    .eq('app_name', app);
 
   if (error) {
     console.error('Error updating subscription:', error);
@@ -210,7 +210,7 @@ async function handleSubscriptionDeleted(
   subscription: Stripe.Subscription
 ) {
   const { error } = await supabase
-    .from('subscriptions')
+    .from('billing_subscriptions')
     .update({
       status: 'canceled',
       updated_at: new Date().toISOString(),
@@ -240,7 +240,7 @@ async function handlePaymentFailed(
   }
 
   const { error } = await supabase
-    .from('subscriptions')
+    .from('billing_subscriptions')
     .update({
       status: 'past_due',
       updated_at: new Date().toISOString(),

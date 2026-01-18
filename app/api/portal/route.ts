@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     // Verify the customer belongs to this user
     const { data: subscription } = await supabase
-      .from('subscriptions')
+      .from('billing_subscriptions')
       .select('stripe_customer_id')
       .eq('user_id', user.id)
       .eq('stripe_customer_id', customerId)
