@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
 import { isValidApp, getAppConfig, createCheckoutSession, AppName } from '@/lib/stripe';
 import { CheckoutMessage } from './CheckoutMessage';
 import { validateCheckoutToken } from '@/lib/checkout-token';
@@ -28,56 +27,50 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     redirect('/');
   }
 
-  // Determine user identity - prefer JWT token from app over session cookie
-  let userId: string;
-  let userEmail: string;
-
-  if (token) {
-    // App sent a JWT token - validate it
-    console.log('[Checkout] Validating token for app:', app);
-    const tokenResult = await validateCheckoutToken(token);
-    console.log('[Checkout] Token validation result:', JSON.stringify(tokenResult));
-
-    if (!tokenResult.valid) {
-      console.error('[Checkout] Invalid checkout token:', tokenResult.error);
-      return (
-        <CheckoutMessage
-          type="error"
-          appDisplayName={appConfig.displayName}
-          retryUrl={`/checkout/${app}`}
-        />
-      );
-    }
-
-    // Validate that token app matches URL app
-    if (tokenResult.app !== app) {
-      console.error('Token app mismatch:', tokenResult.app, 'vs', app);
-      return (
-        <CheckoutMessage
-          type="error"
-          appDisplayName={appConfig.displayName}
-          retryUrl={`/checkout/${app}`}
-        />
-      );
-    }
-
-    userId = tokenResult.userId;
-    userEmail = prefilled_email || tokenResult.email;
-
-  } else {
-    // No token - fall back to session cookie (legacy flow)
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      // Redirect to login with return URL
-      const returnUrl = encodeURIComponent(`/checkout/${app}`);
-      redirect(`/login?redirect=${returnUrl}`);
-    }
-
-    userId = user.id;
-    userEmail = user.email || '';
+  // Token is required - no fallback to session
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-onsite-bg flex items-center justify-center p-4">
+        <div className="text-center">
+          <h1 className="text-xl font-bold text-red-500 mb-2">Invalid Access</h1>
+          <p className="text-onsite-text-muted">
+            Please use the app to access checkout.
+          </p>
+        </div>
+      </div>
+    );
   }
+
+  // Validate JWT token
+  console.log('[Checkout] Validating token for app:', app);
+  const tokenResult = await validateCheckoutToken(token);
+  console.log('[Checkout] Token validation result:', JSON.stringify(tokenResult));
+
+  if (!tokenResult.valid) {
+    console.error('[Checkout] Invalid checkout token:', tokenResult.error);
+    return (
+      <CheckoutMessage
+        type="error"
+        appDisplayName={appConfig.displayName}
+        retryUrl={`/checkout/${app}`}
+      />
+    );
+  }
+
+  // Validate that token app matches URL app
+  if (tokenResult.app !== app) {
+    console.error('Token app mismatch:', tokenResult.app, 'vs', app);
+    return (
+      <CheckoutMessage
+        type="error"
+        appDisplayName={appConfig.displayName}
+        retryUrl={`/checkout/${app}`}
+      />
+    );
+  }
+
+  const userId = tokenResult.userId;
+  const userEmail = prefilled_email || tokenResult.email;
 
   // If user canceled, show message with retry option
   if (canceled === 'true') {
