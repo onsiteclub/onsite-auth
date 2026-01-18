@@ -106,7 +106,7 @@ async function handleCheckoutCompleted(
   // Get customer details (includes address and phone)
   const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
 
-  // Core subscription data (columns that exist in all setups)
+  // Full subscription data with customer billing information
   const subscriptionData: Record<string, unknown> = {
     user_id: userId,
     app_name: app,
@@ -117,7 +117,17 @@ async function handleCheckoutCompleted(
     current_period_start: safeTimestampToISO(subscription.current_period_start),
     current_period_end: safeTimestampToISO(subscription.current_period_end),
     cancel_at_period_end: subscription.cancel_at_period_end,
+    // Customer contact info
     customer_email: customer.email,
+    customer_name: customer.name,
+    customer_phone: customer.phone,
+    // Billing address
+    billing_address_line1: customer.address?.line1,
+    billing_address_line2: customer.address?.line2,
+    billing_address_city: customer.address?.city,
+    billing_address_state: customer.address?.state,
+    billing_address_postal_code: customer.address?.postal_code,
+    billing_address_country: customer.address?.country,
     updated_at: new Date().toISOString(),
   };
 
@@ -133,7 +143,7 @@ async function handleCheckoutCompleted(
   }
 
   console.log(`Subscription created/updated for user ${userId}, app ${app}`);
-  console.log(`Customer email: ${customer.email}`);
+  console.log(`Customer: ${customer.name}, ${customer.email}, ${customer.phone}`);
 }
 
 /**
