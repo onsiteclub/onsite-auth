@@ -485,6 +485,7 @@ ALLOWED_REDIRECT_DOMAINS=onsiteclub.ca,app.onsiteclub.ca
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-01-18 | v1.4 | Nova tela de sucesso com design de card, análise do fluxo webhook→Supabase |
 | 2026-01-18 | v1.3 | Migração Vercel: projeto reconectado, deploy funcionando, domínio migrado |
 | 2026-01-18 | v1.2 | Corrigido: subscriptions → billing_subscriptions, app → app_name |
 | 2026-01-18 | v1.1 | Atualizado para match exato com código |
@@ -495,6 +496,67 @@ ALLOWED_REDIRECT_DOMAINS=onsiteclub.ca,app.onsiteclub.ca
 ## Reports to Blue
 
 *Seção para relatórios de implementação de HERMES para Blue*
+
+### Report 2026-01-18 #4 - Nova Tela de Sucesso e Análise Webhook
+
+**Sessão de finalização e análise do sistema.**
+
+#### Nova Tela de Sucesso
+
+Implementado novo design da página de sucesso (`SuccessClient.tsx`) com:
+- Logo OnSite Club no topo
+- Card branco com bordas arredondadas e sombra
+- Ícone de check verde em círculo
+- Mensagens de confirmação e instruções
+- Box "Return to App" com instruções
+- Link para gerenciar assinatura
+- Footer com copyright
+
+#### Análise do Fluxo Webhook → Supabase
+
+**Status: CÓDIGO CORRETO ✅**
+
+O fluxo completo está implementado corretamente:
+
+1. **Checkout cria sessão com metadata** (`lib/stripe.ts:103-106`):
+   ```typescript
+   metadata: { app, user_id: userId }
+   ```
+
+2. **Webhook recebe e extrai dados** (`route.ts:80-81`):
+   ```typescript
+   const app = session.metadata?.app;
+   const userId = session.metadata?.user_id;
+   ```
+
+3. **Webhook faz UPSERT no Supabase** (`route.ts:109-128`):
+   - Tabela: `billing_subscriptions`
+   - Campos: user_id, app_name, status, customer_email, customer_name, phone, address, etc.
+   - onConflict: `user_id,app_name`
+
+#### Possíveis Pontos de Falha
+
+| Problema | Causa | Solução |
+|----------|-------|---------|
+| Webhook não chega | URL errada no Stripe | Verificar Stripe Dashboard |
+| Signature inválida | `STRIPE_WEBHOOK_SECRET` errado | Verificar Vercel env vars |
+| Supabase falha | `SUPABASE_SERVICE_ROLE_KEY` faltando | Adicionar na Vercel |
+| Tabela não existe | Schema não criado | Rodar migration no Supabase |
+
+#### Arquivos Modificados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `app/checkout/success/SuccessClient.tsx` | Novo design com card, ícones e layout profissional |
+
+#### Pendente para Teste
+
+- [ ] Fazer pagamento teste completo
+- [ ] Verificar logs da Vercel para `[Stripe]` e `Subscription created/updated`
+- [ ] Verificar Stripe Dashboard → Webhooks → Event deliveries (✅ ou ❌)
+- [ ] Query no Supabase: `SELECT * FROM billing_subscriptions ORDER BY updated_at DESC LIMIT 5`
+
+---
 
 ### Report 2026-01-18 #3 - Migração Vercel e Correções
 
@@ -609,4 +671,4 @@ LIMIT 5;
 
 ---
 
-*Última atualização: 2026-01-18 (v1.3)*
+*Última atualização: 2026-01-18 (v1.4)*
