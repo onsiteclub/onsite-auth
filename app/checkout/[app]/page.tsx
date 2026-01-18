@@ -64,6 +64,8 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   }
 
   // Create Stripe checkout session
+  let stripeUrl: string | null = null;
+
   try {
     console.log('[Checkout] Creating Stripe session for:', { app, userId, userEmail, returnRedirect });
     const session = await createCheckoutSession({
@@ -73,12 +75,14 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
       returnRedirect: returnRedirect,
     });
     console.log('[Checkout] Stripe session created:', session.id);
-
-    if (session.url) {
-      redirect(session.url);
-    }
+    stripeUrl = session.url;
   } catch (error) {
     console.error('[Checkout] Stripe error:', error);
+    return <CheckoutMessage type="error" appDisplayName={appConfig.displayName} />;
+  }
+
+  if (stripeUrl) {
+    redirect(stripeUrl);
   }
 
   return <CheckoutMessage type="error" appDisplayName={appConfig.displayName} />;
