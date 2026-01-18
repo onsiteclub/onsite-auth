@@ -7,9 +7,9 @@ interface CheckoutPageProps {
   params: { app: string };
   searchParams: {
     canceled?: string;
-    token?: string;           // JWT token from app
-    prefilled_email?: string; // Email for Stripe prefill
-    redirect?: string;        // Return URL after checkout
+    token?: string;
+    prefilled_email?: string;
+    redirect?: string;
   };
 }
 
@@ -27,15 +27,13 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     redirect('/');
   }
 
-  // Token is required - no fallback to session
+  // Token is required
   if (!token) {
     return (
       <div className="min-h-screen bg-onsite-bg flex items-center justify-center p-4">
         <div className="text-center">
           <h1 className="text-xl font-bold text-red-500 mb-2">Invalid Access</h1>
-          <p className="text-onsite-text-muted">
-            Please use the app to access checkout.
-          </p>
+          <p className="text-onsite-text-muted">Please use the app to access checkout.</p>
         </div>
       </div>
     );
@@ -48,45 +46,24 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
 
   if (!tokenResult.valid) {
     console.error('[Checkout] Invalid checkout token:', tokenResult.error);
-    return (
-      <CheckoutMessage
-        type="error"
-        appDisplayName={appConfig.displayName}
-        retryUrl={`/checkout/${app}`}
-      />
-    );
+    return <CheckoutMessage type="error" appDisplayName={appConfig.displayName} />;
   }
 
   // Validate that token app matches URL app
   if (tokenResult.app !== app) {
     console.error('Token app mismatch:', tokenResult.app, 'vs', app);
-    return (
-      <CheckoutMessage
-        type="error"
-        appDisplayName={appConfig.displayName}
-        retryUrl={`/checkout/${app}`}
-      />
-    );
+    return <CheckoutMessage type="error" appDisplayName={appConfig.displayName} />;
   }
 
   const userId = tokenResult.userId;
   const userEmail = prefilled_email || tokenResult.email;
 
-  // If user canceled, show message with retry option
+  // If user canceled
   if (canceled === 'true') {
-    return (
-      <CheckoutMessage
-        type="canceled"
-        appDisplayName={appConfig.displayName}
-        retryUrl={`/checkout/${app}${token ? `?token=${token}` : ''}`}
-      />
-    );
+    return <CheckoutMessage type="canceled" appDisplayName={appConfig.displayName} />;
   }
 
-  // Create Stripe checkout session and redirect directly to Stripe
-  let checkoutUrl: string | null = null;
-  let checkoutError: Error | null = null;
-
+  // Create Stripe checkout session
   try {
     console.log('[Checkout] Creating Stripe session for:', { app, userId, userEmail, returnRedirect });
     const session = await createCheckoutSession({
@@ -96,23 +73,13 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
       returnRedirect: returnRedirect,
     });
     console.log('[Checkout] Stripe session created:', session.id);
-    checkoutUrl = session.url;
+
+    if (session.url) {
+      redirect(session.url);
+    }
   } catch (error) {
     console.error('[Checkout] Stripe error:', error);
-    checkoutError = error as Error;
   }
 
-  // Handle error
-  if (checkoutError || !checkoutUrl) {
-    return (
-      <CheckoutMessage
-        type="error"
-        appDisplayName={appConfig.displayName}
-        retryUrl={`/checkout/${app}${token ? `?token=${token}` : ''}`}
-      />
-    );
-  }
-
-  // Redirect to Stripe (outside try/catch)
-  redirect(checkoutUrl);
+  return <CheckoutMessage type="error" appDisplayName={appConfig.displayName} />;
 }
