@@ -69,6 +69,19 @@ export async function POST(request: NextRequest) {
 }
 
 /**
+ * Safely convert Unix timestamp to ISO string
+ * Returns null if timestamp is invalid
+ */
+function safeTimestampToISO(timestamp: number | null | undefined): string | null {
+  if (!timestamp || timestamp <= 0) return null;
+  try {
+    return new Date(timestamp * 1000).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Handle checkout.session.completed
  * Creates or updates subscription record when payment is successful
  * Also saves customer billing information
@@ -93,39 +106,26 @@ async function handleCheckoutCompleted(
   // Get customer details (includes address and phone)
   const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
 
-  // Prepare customer data
-  const customerData = {
+  // Core subscription data (columns that exist in all setups)
+  const subscriptionData: Record<string, unknown> = {
+    user_id: userId,
+    app_name: app,
+    stripe_customer_id: customerId,
+    stripe_subscription_id: subscriptionId,
+    stripe_price_id: subscription.items.data[0]?.price.id,
+    status: subscription.status,
+    current_period_start: safeTimestampToISO(subscription.current_period_start),
+    current_period_end: safeTimestampToISO(subscription.current_period_end),
+    cancel_at_period_end: subscription.cancel_at_period_end,
     customer_email: customer.email,
-    customer_name: customer.name,
-    customer_phone: customer.phone,
-    billing_address_line1: customer.address?.line1,
-    billing_address_line2: customer.address?.line2,
-    billing_address_city: customer.address?.city,
-    billing_address_state: customer.address?.state,
-    billing_address_postal_code: customer.address?.postal_code,
-    billing_address_country: customer.address?.country,
+    updated_at: new Date().toISOString(),
   };
 
   const { error } = await supabase
     .from('billing_subscriptions')
-    .upsert(
-      {
-        user_id: userId,
-        app_name: app,
-        stripe_customer_id: customerId,
-        stripe_subscription_id: subscriptionId,
-        stripe_price_id: subscription.items.data[0]?.price.id,
-        status: subscription.status,
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-        cancel_at_period_end: subscription.cancel_at_period_end,
-        ...customerData,
-        updated_at: new Date().toISOString(),
-      },
-      {
-        onConflict: 'user_id,app_name',
-      }
-    );
+    .upsert(subscriptionData, {
+      onConflict: 'user_id,app_name',
+    });
 
   if (error) {
     console.error('Error upserting subscription:', error);
@@ -133,7 +133,7 @@ async function handleCheckoutCompleted(
   }
 
   console.log(`Subscription created/updated for user ${userId}, app ${app}`);
-  console.log(`Customer data saved: ${customer.email}, ${customer.phone}`);
+  console.log(`Customer email: ${customer.email}`);
 }
 
 /**
@@ -165,8 +165,8 @@ async function handleSubscriptionUpdated(
       .from('billing_subscriptions')
       .update({
         status: subscription.status,
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+        current_period_start: safeTimestampToISO(subscription.current_period_start),
+        current_period_end: safeTimestampToISO(subscription.current_period_end),
         cancel_at_period_end: subscription.cancel_at_period_end,
         updated_at: new Date().toISOString(),
       })
@@ -185,8 +185,8 @@ async function handleSubscriptionUpdated(
     .from('billing_subscriptions')
     .update({
       status: subscription.status,
-      current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+      current_period_start: safeTimestampToISO(subscription.current_period_start),
+      current_period_end: safeTimestampToISO(subscription.current_period_end),
       cancel_at_period_end: subscription.cancel_at_period_end,
       updated_at: new Date().toISOString(),
     })
