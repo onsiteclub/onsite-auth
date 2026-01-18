@@ -4,11 +4,11 @@ import { isValidApp, getAppConfig } from '@/lib/stripe';
 import { SuccessClient } from './SuccessClient';
 
 interface SuccessPageProps {
-  searchParams: Promise<{ app?: string; session_id?: string }>;
+  searchParams: { app?: string; session_id?: string };
 }
 
 export default async function SuccessPage({ searchParams }: SuccessPageProps) {
-  const { app, session_id } = await searchParams;
+  const { app, session_id } = searchParams;
 
   // Validate app
   if (!app || !isValidApp(app)) {

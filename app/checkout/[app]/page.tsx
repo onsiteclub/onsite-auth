@@ -5,18 +5,18 @@ import { CheckoutMessage } from './CheckoutMessage';
 import { validateCheckoutToken } from '@/lib/checkout-token';
 
 interface CheckoutPageProps {
-  params: Promise<{ app: string }>;
-  searchParams: Promise<{
+  params: { app: string };
+  searchParams: {
     canceled?: string;
     token?: string;           // JWT token from app
     prefilled_email?: string; // Email for Stripe prefill
     redirect?: string;        // Return URL after checkout
-  }>;
+  };
 }
 
 export default async function CheckoutPage({ params, searchParams }: CheckoutPageProps) {
-  const { app } = await params;
-  const { canceled, token, prefilled_email, redirect: returnRedirect } = await searchParams;
+  const { app } = params;
+  const { canceled, token, prefilled_email, redirect: returnRedirect } = searchParams;
 
   // Validate app name
   if (!isValidApp(app)) {
