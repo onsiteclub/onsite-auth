@@ -69,9 +69,15 @@ export async function createCheckoutSession({
   customerId?: string;
   returnRedirect?: string;
 }): Promise<Stripe.Checkout.Session> {
+  console.log('[Stripe] createCheckoutSession called with:', { app, userId, userEmail, returnRedirect });
+  console.log('[Stripe] STRIPE_SECRET_KEY configured:', !!process.env.STRIPE_SECRET_KEY);
+
   const appConfig = getAppConfig(app);
+  console.log('[Stripe] App config:', JSON.stringify(appConfig));
 
   if (!appConfig || !appConfig.priceId) {
+    console.error('[Stripe] Invalid app config - missing priceId for:', app);
+    console.error('[Stripe] STRIPE_PRICE_CALCULATOR:', process.env.STRIPE_PRICE_CALCULATOR);
     throw new Error(`Invalid app configuration for: ${app}`);
   }
 
@@ -122,7 +128,21 @@ export async function createCheckoutSession({
     sessionConfig.customer_email = userEmail;
   }
 
-  return stripe.checkout.sessions.create(sessionConfig);
+  console.log('[Stripe] Creating session with config:', JSON.stringify({
+    mode: sessionConfig.mode,
+    priceId: appConfig.priceId,
+    success_url: sessionConfig.success_url,
+    cancel_url: sessionConfig.cancel_url,
+  }));
+
+  try {
+    const session = await stripe.checkout.sessions.create(sessionConfig);
+    console.log('[Stripe] Session created successfully:', session.id);
+    return session;
+  } catch (error) {
+    console.error('[Stripe] Session creation failed:', error);
+    throw error;
+  }
 }
 
 /**
