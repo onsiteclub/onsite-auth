@@ -61,11 +61,13 @@ export async function createCheckoutSession({
   userId,
   userEmail,
   customerId,
+  returnRedirect,
 }: {
   app: AppName;
   userId: string;
   userEmail: string;
   customerId?: string;
+  returnRedirect?: string;
 }): Promise<Stripe.Checkout.Session> {
   const appConfig = getAppConfig(app);
 
@@ -74,6 +76,12 @@ export async function createCheckoutSession({
   }
 
   const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.onsiteclub.ca';
+
+  // Build success URL with optional return redirect
+  let successUrl = `${authUrl}/checkout/success?app=${app}&session_id={CHECKOUT_SESSION_ID}`;
+  if (returnRedirect) {
+    successUrl += `&redirect=${encodeURIComponent(returnRedirect)}`;
+  }
 
   const sessionConfig: Stripe.Checkout.SessionCreateParams = {
     mode: 'subscription',
@@ -84,7 +92,7 @@ export async function createCheckoutSession({
         quantity: 1,
       },
     ],
-    success_url: `${authUrl}/checkout/success?app=${app}&session_id={CHECKOUT_SESSION_ID}`,
+    success_url: successUrl,
     cancel_url: `${authUrl}/checkout/${app}?canceled=true`,
     metadata: {
       app,

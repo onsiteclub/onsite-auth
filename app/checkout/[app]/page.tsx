@@ -97,6 +97,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
       app: app as AppName,
       userId: userId,
       userEmail: userEmail,
+      returnRedirect: returnRedirect,
     });
     checkoutUrl = session.url;
   } catch (error) {
