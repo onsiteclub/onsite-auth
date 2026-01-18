@@ -5,7 +5,7 @@ interface CheckoutMessageProps {
 
 export function CheckoutMessage({ type, appDisplayName }: CheckoutMessageProps) {
   return (
-    <div className="min-h-screen bg-onsite-bg flex items-center justify-center p-4">
+    <div className="min-h-screen bg-red-600 flex items-center justify-center p-4">
       <div className="text-center max-w-md">
         {type === 'error' ? (
           <>
