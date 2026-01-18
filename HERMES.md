@@ -485,6 +485,7 @@ ALLOWED_REDIRECT_DOMAINS=onsiteclub.ca,app.onsiteclub.ca
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-01-18 | v1.3 | Migração Vercel: projeto reconectado, deploy funcionando, domínio migrado |
 | 2026-01-18 | v1.2 | Corrigido: subscriptions → billing_subscriptions, app → app_name |
 | 2026-01-18 | v1.1 | Atualizado para match exato com código |
 | 2026-01-17 | v1.0 | Documento de identidade criado por Blue |
@@ -494,6 +495,73 @@ ALLOWED_REDIRECT_DOMAINS=onsiteclub.ca,app.onsiteclub.ca
 ## Reports to Blue
 
 *Seção para relatórios de implementação de HERMES para Blue*
+
+### Report 2026-01-18 #3 - Migração Vercel e Correções
+
+**Sessão de debugging e migração de infraestrutura.**
+
+#### Problema Inicial
+Commits não estavam sendo deployados na Vercel. Investigação revelou:
+1. Commits eram "vazios" (0 files changed) - não triggavam rebuild
+2. Domínio `auth.onsiteclub.ca` apontava para projeto antigo na Vercel
+3. Webhook GitHub → Vercel estava desconectado
+
+#### Correções Realizadas
+
+| Item | Ação | Status |
+|------|------|--------|
+| Vercel Git Connection | Reconectado repositório ao projeto | ✅ |
+| Deploy Test | Teste com background vermelho confirmou deploy funcionando | ✅ |
+| Domínio | Migrado `auth.onsiteclub.ca` do projeto antigo para o novo | ✅ |
+| `redirect()` bug | Movido `redirect()` para fora do try/catch (NEXT_REDIRECT exception) | ✅ |
+| Success page | Removido redirect para `/login` - agora mostra mensagem de sucesso | ✅ |
+| `CHECKOUT_JWT_SECRET` | Nova chave gerada e configurada em ambos os projetos | ✅ |
+
+#### Arquivos Modificados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `app/checkout/[app]/page.tsx` | `redirect()` movido para fora do try/catch |
+| `app/checkout/success/page.tsx` | Removido auth check e redirect para /login |
+| `next.config.js` | Removido comentário (trigger deploy) |
+
+#### Configuração Atual
+
+**Vercel Project:** `onsite-auth` (onsiteclubs-projects)
+**Domain:** `auth.onsiteclub.ca` → projeto novo
+**Webhook Stripe:** `https://onsite-auth.vercel.app/api/webhooks/stripe`
+
+#### Variáveis de Ambiente Necessárias na Vercel
+
+```
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
+STRIPE_SECRET_KEY
+STRIPE_WEBHOOK_SECRET
+STRIPE_PRICE_CALCULATOR
+CHECKOUT_JWT_SECRET
+NEXT_PUBLIC_AUTH_URL=https://auth.onsiteclub.ca
+```
+
+#### Pendente para Amanhã
+
+- [ ] **TESTAR WEBHOOK SUPABASE**: Fazer um pagamento teste e verificar se `billing_subscriptions` é atualizada
+- [ ] Verificar se `STRIPE_WEBHOOK_SECRET` está correto no projeto novo
+- [ ] Verificar se `SUPABASE_SERVICE_ROLE_KEY` está configurado
+- [ ] Atualizar webhook URL no Stripe para `https://auth.onsiteclub.ca/api/webhooks/stripe` (se ainda usar vercel.app)
+
+#### Query para Verificar Webhook
+
+```sql
+SELECT user_id, app_name, status, customer_email, customer_name, updated_at
+FROM billing_subscriptions
+WHERE app_name = 'calculator'
+ORDER BY updated_at DESC
+LIMIT 5;
+```
+
+---
 
 ### Report 2026-01-18 #2 (Diretiva de Blue)
 
@@ -541,4 +609,4 @@ LIMIT 5;
 
 ---
 
-*Última atualização: 2026-01-18 (v1.2)*
+*Última atualização: 2026-01-18 (v1.3)*
