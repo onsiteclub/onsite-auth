@@ -62,6 +62,11 @@ export async function GET(
   checkoutUrl.searchParams.set('user_id', data.user_id);
   checkoutUrl.searchParams.set('prefilled_email', data.email);
 
+  // Pass redirect_url so success page can redirect back to app
+  if (data.redirect_url) {
+    checkoutUrl.searchParams.set('redirect', data.redirect_url);
+  }
+
   console.log(`[/r/${code}] Redirecting user ${data.user_id} (${data.email}) to ${data.app} checkout`);
   return NextResponse.redirect(checkoutUrl);
 }

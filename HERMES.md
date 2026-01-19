@@ -119,6 +119,379 @@ O schema se adapta aos dados. O código não descarta dados.
 
 ---
 
+## 🔌 Guia de Integração para Novos Apps
+
+> **Esta seção contém TUDO que um novo app precisa para se conectar ao Auth Hub.**
+
+### Visão Geral da Arquitetura
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   SEU APP       │────▶│   AUTH HUB      │────▶│   STRIPE        │
+│ (Calculator,    │     │ (HERMES)        │     │                 │
+│  Timekeeper,    │     │                 │     │                 │
+│  etc.)          │◀────│                 │◀────│   Webhook       │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+        │                       │
+        │                       │
+        ▼                       ▼
+┌───────────────────────────────────────────────────────────────────┐
+│                         SUPABASE                                   │
+│  ┌─────────────────────┐  ┌─────────────────────┐                 │
+│  │  auth.users         │  │  billing_subscriptions│                │
+│  │  (usuários)         │  │  (assinaturas)       │                │
+│  └─────────────────────┘  └─────────────────────┘                 │
+│                           ┌─────────────────────┐                 │
+│                           │  payment_history    │                 │
+│                           │  (histórico)        │                 │
+│                           └─────────────────────┘                 │
+│                           ┌─────────────────────┐                 │
+│                           │  checkout_codes     │                 │
+│                           │  (short codes)      │                 │
+│                           └─────────────────────┘                 │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 📋 Checklist de Integração
+
+#### 1. Configuração no Stripe (Blue faz)
+
+- [ ] Criar produto no Stripe Dashboard
+- [ ] Criar price (ex: `price_xxx`)
+- [ ] Adicionar env var no Auth Hub: `STRIPE_PRICE_NOVOAPP=price_xxx`
+
+#### 2. Configuração no Auth Hub (HERMES faz)
+
+- [ ] Adicionar app em `lib/stripe.ts`:
+  ```typescript
+  // Em AppName type
+  export type AppName = 'calculator' | 'timekeeper' | 'novoapp';
+
+  // Em getAppConfig()
+  novoapp: {
+    name: 'novoapp',
+    displayName: 'OnSite NovoApp Pro',
+    priceId: process.env.STRIPE_PRICE_NOVOAPP || '',
+    successUrl: process.env.NEXT_PUBLIC_NOVOAPP_URL || 'https://novoapp.vercel.app',
+    cancelUrl: process.env.NEXT_PUBLIC_NOVOAPP_URL || 'https://novoapp.vercel.app',
+  },
+
+  // Em isValidApp()
+  return ['calculator', 'timekeeper', 'novoapp'].includes(app);
+  ```
+
+#### 3. Configuração no Supabase (Blue faz)
+
+- [ ] Tabela `billing_subscriptions` já suporta qualquer app via coluna `app_name`
+- [ ] Não precisa criar nova tabela
+
+#### 4. Configuração no Seu App (Agente do App faz)
+
+- [ ] Compartilhar mesmo `CHECKOUT_JWT_SECRET` do Auth Hub
+- [ ] Implementar geração de JWT ou usar Short Code flow
+- [ ] Implementar query de subscription status
+
+---
+
+### 🔗 Métodos de Checkout
+
+O Auth Hub suporta **3 métodos** para iniciar checkout:
+
+#### Método 1: Short Code (RECOMENDADO para Mobile)
+
+> Ideal para apps mobile onde URLs longas são truncadas.
+
+**Fluxo:**
+```
+App → Cria código na tabela checkout_codes → Abre URL curta → Auth Hub valida → Stripe
+```
+
+**1. App cria código no Supabase:**
+```typescript
+const code = generateShortCode(); // ex: "A1B2C3"
+
+await supabase.from('checkout_codes').insert({
+  code: code,
+  user_id: userId,
+  email: userEmail,
+  app: 'calculator',
+  redirect_url: 'onsitecalculator://auth-callback', // Deep link de retorno
+  expires_at: new Date(Date.now() + 60000).toISOString(), // 60 segundos
+  used: false,
+});
+```
+
+**2. App abre URL curta:**
+```typescript
+const url = 'https://auth.onsiteclub.ca/r/' + code;
+// Exemplo: https://auth.onsiteclub.ca/r/A1B2C3
+
+Linking.openURL(url);
+```
+
+**3. Tabela `checkout_codes` (schema):**
+```sql
+CREATE TABLE checkout_codes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT UNIQUE NOT NULL,
+  user_id UUID NOT NULL,
+  email TEXT NOT NULL,
+  app TEXT NOT NULL,
+  redirect_url TEXT,              -- Deep link para retorno ao app
+  expires_at TIMESTAMPTZ NOT NULL,
+  used BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+---
+
+#### Método 2: Email-Only Flow (Simples)
+
+> Ideal quando você tem o email mas não precisa de JWT.
+
+**URL:**
+```
+https://auth.onsiteclub.ca/checkout/{app}?prefilled_email={email}&user_id={userId}
+```
+
+**Exemplo:**
+```
+https://auth.onsiteclub.ca/checkout/calculator?prefilled_email=user@email.com&user_id=550e8400-...
+```
+
+**Notas:**
+- `user_id` é opcional - se não fornecido, webhook resolve via Supabase Auth pelo email
+- Requer que o email exista em `auth.users`
+
+---
+
+#### Método 3: JWT Token (Legacy)
+
+> Mais seguro, mas requer compartilhamento de secret.
+
+**URL:**
+```
+https://auth.onsiteclub.ca/checkout/{app}?token={JWT}
+```
+
+**Estrutura do JWT:**
+```json
+{
+  "sub": "550e8400-e29b-41d4-a716-446655440000",  // user_id
+  "email": "user@example.com",
+  "app": "calculator",
+  "iat": 1705432800,                              // issued at
+  "exp": 1705433100,                              // expires (5 min)
+  "jti": "unique-token-id"                        // anti-replay
+}
+```
+
+**Assinatura:** HMAC-SHA256 com `CHECKOUT_JWT_SECRET`
+
+---
+
+### 📡 Endpoints do Auth Hub
+
+| Endpoint | Método | Descrição | Params |
+|----------|--------|-----------|--------|
+| `/checkout/{app}` | GET | Página de checkout | `token`, `prefilled_email`, `user_id`, `redirect` |
+| `/r/{code}` | GET | Redirect via short code | code na URL |
+| `/checkout/success` | GET | Página de sucesso | `app`, `session_id`, `redirect` |
+| `/api/webhooks/stripe` | POST | Webhook do Stripe | Body: Stripe event |
+| `/api/subscription/status` | GET | Status da subscription | `app` (query) |
+| `/api/portal` | POST | Portal do cliente Stripe | `returnUrl` (body) |
+
+---
+
+### 📊 Consultar Status de Subscription
+
+**Direto no Supabase (RECOMENDADO):**
+```typescript
+const { data } = await supabase
+  .from('billing_subscriptions')
+  .select('status, current_period_end, cancel_at_period_end')
+  .eq('user_id', userId)
+  .eq('app_name', 'calculator')
+  .single();
+
+const isPremium = data?.status === 'active' || data?.status === 'trialing';
+```
+
+**Via API do Auth Hub:**
+```typescript
+const response = await fetch(
+  'https://auth.onsiteclub.ca/api/subscription/status?app=calculator',
+  {
+    headers: {
+      'Authorization': `Bearer ${supabaseAccessToken}`
+    }
+  }
+);
+const { status, isPremium } = await response.json();
+```
+
+---
+
+### 🔄 Redirecionamento Após Pagamento
+
+**Fluxo completo:**
+```
+Stripe Success → /checkout/success?app=X&redirect=Y → Auto-redirect ou botão
+```
+
+**Comportamento da página de sucesso:**
+
+| Tipo de `redirect` | Comportamento |
+|--------------------|---------------|
+| Deep link (`onsitecalculator://...`) | Auto-redirect em 3s + botão "Voltar ao App" |
+| URL web (`https://...`) | Mostra mensagem + "feche esta janela" |
+| Não fornecido | Usa `successUrl` do app config |
+
+**Deep links suportados:**
+- `onsiteclub://`
+- `onsitecalculator://`
+- `onsitetimekeeper://`
+
+---
+
+### 🗄️ Tabelas Supabase Relevantes
+
+#### `billing_subscriptions` (subscription ativa)
+
+```sql
+SELECT * FROM billing_subscriptions
+WHERE user_id = 'xxx' AND app_name = 'calculator';
+```
+
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| user_id | UUID | FK para auth.users |
+| app_name | TEXT | 'calculator', 'timekeeper', etc. |
+| status | TEXT | 'active', 'trialing', 'canceled', 'past_due' |
+| stripe_customer_id | TEXT | ID do cliente no Stripe |
+| stripe_subscription_id | TEXT | ID da subscription no Stripe |
+| current_period_end | TIMESTAMPTZ | Quando expira |
+| cancel_at_period_end | BOOLEAN | Vai cancelar no fim do período? |
+| customer_email | TEXT | Email do pagador |
+| customer_name | TEXT | Nome do pagador |
+| billing_address_* | TEXT | Endereço de cobrança |
+
+#### `payment_history` (histórico de pagamentos)
+
+```sql
+SELECT * FROM payment_history
+WHERE user_id = 'xxx' ORDER BY paid_at DESC;
+```
+
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| user_id | UUID | FK para auth.users |
+| app_name | TEXT | App relacionado |
+| amount | INTEGER | Valor em centavos |
+| currency | TEXT | 'cad', 'usd' |
+| status | TEXT | 'succeeded', 'refunded' |
+| paid_at | TIMESTAMPTZ | Data do pagamento |
+
+#### `checkout_codes` (códigos temporários)
+
+```sql
+SELECT * FROM checkout_codes WHERE code = 'ABC123';
+```
+
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| code | TEXT | Código único (6 chars) |
+| user_id | UUID | Usuário |
+| email | TEXT | Email do usuário |
+| app | TEXT | App destino |
+| redirect_url | TEXT | Deep link de retorno |
+| expires_at | TIMESTAMPTZ | Expira em 60s |
+| used | BOOLEAN | Já foi usado? |
+
+---
+
+### 🔐 Variáveis de Ambiente
+
+**No Auth Hub (já configuradas):**
+```bash
+CHECKOUT_JWT_SECRET=xxx          # Compartilhar com apps que usam JWT
+STRIPE_WEBHOOK_SECRET=whsec_xxx  # Não compartilhar
+SUPABASE_SERVICE_ROLE_KEY=xxx    # Não compartilhar
+```
+
+**No Seu App (você configura):**
+```bash
+# Supabase (mesmo projeto)
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+
+# Auth Hub
+AUTH_HUB_URL=https://auth.onsiteclub.ca
+
+# Apenas se usar JWT flow
+CHECKOUT_JWT_SECRET=xxx  # Pedir para Blue
+```
+
+---
+
+### 📝 Exemplo Completo: Novo App "Shop"
+
+**1. Blue cria produto no Stripe:**
+- Produto: "OnSite Shop Pro"
+- Price ID: `price_shop_123`
+
+**2. HERMES atualiza Auth Hub:**
+```typescript
+// lib/stripe.ts
+export type AppName = 'calculator' | 'timekeeper' | 'shop';
+
+shop: {
+  name: 'shop',
+  displayName: 'OnSite Shop Pro',
+  priceId: process.env.STRIPE_PRICE_SHOP || '',
+  successUrl: 'https://shop.onsiteclub.ca',
+  cancelUrl: 'https://shop.onsiteclub.ca',
+},
+```
+
+**3. App Shop implementa checkout:**
+```typescript
+// Opção A: Short Code (mobile)
+const code = crypto.randomUUID().substring(0, 6).toUpperCase();
+await supabase.from('checkout_codes').insert({
+  code,
+  user_id: userId,
+  email: userEmail,
+  app: 'shop',
+  redirect_url: 'onsiteshop://payment-success',
+  expires_at: new Date(Date.now() + 60000).toISOString(),
+  used: false,
+});
+window.open(`https://auth.onsiteclub.ca/r/${code}`);
+
+// Opção B: Email-only (web)
+window.open(`https://auth.onsiteclub.ca/checkout/shop?prefilled_email=${email}&user_id=${userId}`);
+```
+
+**4. App Shop verifica subscription:**
+```typescript
+const { data } = await supabase
+  .from('billing_subscriptions')
+  .select('status')
+  .eq('user_id', userId)
+  .eq('app_name', 'shop')
+  .single();
+
+if (data?.status === 'active') {
+  // Usuário é premium
+}
+```
+
+---
+
 ## Tech Stack
 
 | Technology | Purpose |
@@ -526,6 +899,7 @@ ALLOWED_REDIRECT_DOMAINS=onsiteclub.ca,app.onsiteclub.ca
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-01-19 | v1.5 | Guia de Integração completo, Short Code redirect_url, SuccessClient auto-redirect |
 | 2026-01-18 | v1.4 | Nova tela de sucesso com design de card, análise do fluxo webhook→Supabase |
 | 2026-01-18 | v1.3 | Migração Vercel: projeto reconectado, deploy funcionando, domínio migrado |
 | 2026-01-18 | v1.2 | Corrigido: subscriptions → billing_subscriptions, app → app_name |
@@ -712,4 +1086,4 @@ LIMIT 5;
 
 ---
 
-*Última atualização: 2026-01-18 (v1.4)*
+*Última atualização: 2026-01-19 (v1.5)*

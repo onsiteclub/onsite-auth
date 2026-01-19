@@ -1,3 +1,7 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
 interface SuccessClientProps {
   appDisplayName: string;
   returnUrl: string;
@@ -10,6 +14,24 @@ export function SuccessClient({
   returnUrl,
   isMobileApp,
 }: SuccessClientProps) {
+  const [countdown, setCountdown] = useState(3);
+
+  useEffect(() => {
+    if (isMobileApp && returnUrl) {
+      const timer = setInterval(() => {
+        setCountdown(c => {
+          if (c <= 1) {
+            clearInterval(timer);
+            window.location.href = returnUrl;
+            return 0;
+          }
+          return c - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [isMobileApp, returnUrl]);
+
   return (
     <div className="min-h-screen bg-onsite-bg flex flex-col items-center justify-center p-4">
       {/* Logo */}
@@ -52,22 +74,36 @@ export function SuccessClient({
           A receipt has been sent to your email.
         </p>
 
-        {/* Return to App Box */}
-        <div className="bg-gray-50 rounded-xl p-4 mb-6">
-          <div className="flex items-start gap-3">
-            <div className="text-gray-400 mt-0.5">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </div>
-            <div>
-              <p className="font-semibold text-gray-900">Return to App</p>
-              <p className="text-gray-500 text-sm">
-                You can now return to the app and enjoy all premium features.
-              </p>
+        {/* Return to App - Mobile vs Web */}
+        {isMobileApp ? (
+          <div className="space-y-4 mb-6">
+            <a
+              href={returnUrl}
+              className="block w-full bg-onsite-accent hover:bg-onsite-accent/90 text-white py-3 rounded-xl font-semibold text-center transition-colors"
+            >
+              Voltar ao App
+            </a>
+            <p className="text-gray-400 text-sm text-center">
+              Redirecionando automaticamente em {countdown}s...
+            </p>
+          </div>
+        ) : (
+          <div className="bg-gray-50 rounded-xl p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <div className="text-gray-400 mt-0.5">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900">Return to App</p>
+                <p className="text-gray-500 text-sm">
+                  You can now return to the app and enjoy all premium features.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Divider */}
         <div className="relative mb-6">
@@ -76,7 +112,7 @@ export function SuccessClient({
           </div>
           <div className="relative flex justify-center text-sm">
             <span className="px-2 bg-white text-gray-400">
-              You may close this window and return to the application.
+              {isMobileApp ? 'Ou feche esta janela e volte manualmente' : 'You may close this window and return to the application.'}
             </span>
           </div>
         </div>

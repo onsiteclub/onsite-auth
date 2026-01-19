@@ -31,8 +31,8 @@ export function getAppConfig(app: AppName): AppConfig | null {
       name: 'calculator',
       displayName: 'OnSite Calculator Pro',
       priceId: process.env.STRIPE_PRICE_CALCULATOR || '',
-      successUrl: process.env.NEXT_PUBLIC_CALCULATOR_URL || 'https://calc.onsiteclub.ca',
-      cancelUrl: process.env.NEXT_PUBLIC_CALCULATOR_URL || 'https://calc.onsiteclub.ca',
+      successUrl: process.env.NEXT_PUBLIC_CALCULATOR_URL || 'https://onsite-calculator.vercel.app',
+      cancelUrl: process.env.NEXT_PUBLIC_CALCULATOR_URL || 'https://onsite-calculator.vercel.app',
     },
     timekeeper: {
       name: 'timekeeper',
