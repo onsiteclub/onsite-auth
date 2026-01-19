@@ -10,12 +10,13 @@ interface CheckoutPageProps {
     token?: string;
     prefilled_email?: string;
     redirect?: string;
+    error?: string; // From /r/[code] redirect
   };
 }
 
 export default async function CheckoutPage({ params, searchParams }: CheckoutPageProps) {
   const { app } = params;
-  const { canceled, token, prefilled_email, redirect: returnRedirect } = searchParams;
+  const { canceled, token, prefilled_email, redirect: returnRedirect, error } = searchParams;
 
   // Validate app name
   if (!isValidApp(app)) {
@@ -25,6 +26,36 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   const appConfig = getAppConfig(app);
   if (!appConfig) {
     redirect('/');
+  }
+
+  // Handle errors from /r/[code] redirect
+  if (error) {
+    const errorMessages: Record<string, { title: string; message: string }> = {
+      invalid_code: {
+        title: 'Invalid Link',
+        message: 'This checkout link is invalid. Please try again from the app.',
+      },
+      expired_code: {
+        title: 'Link Expired',
+        message: 'This checkout link has expired. Please generate a new one from the app.',
+      },
+      used_code: {
+        title: 'Link Already Used',
+        message: 'This checkout link has already been used. Please generate a new one from the app.',
+      },
+    };
+    const errorInfo = errorMessages[error] || {
+      title: 'Error',
+      message: 'An error occurred. Please try again from the app.',
+    };
+    return (
+      <div className="min-h-screen bg-onsite-bg flex items-center justify-center p-4">
+        <div className="text-center">
+          <h1 className="text-xl font-bold text-red-500 mb-2">{errorInfo.title}</h1>
+          <p className="text-onsite-text-muted">{errorInfo.message}</p>
+        </div>
+      </div>
+    );
   }
 
   // Token is required
