@@ -57,6 +57,18 @@ export async function POST(request: NextRequest) {
         break;
       }
 
+      case 'invoice.paid': {
+        const invoice = event.data.object as Stripe.Invoice;
+        await handleInvoicePaid(supabase, invoice);
+        break;
+      }
+
+      case 'charge.refunded': {
+        const charge = event.data.object as Stripe.Charge;
+        await handleChargeRefunded(supabase, charge);
+        break;
+      }
+
       default:
         console.log(`Unhandled event type: ${event.type}`);
     }
@@ -165,6 +177,40 @@ async function handleCheckoutCompleted(
 
   console.log(`Subscription created/updated for user ${userId}, app ${app}`);
   console.log(`Customer: ${customer.name}, ${customer.email}, ${customer.phone}`);
+
+  // Insert into payment_history
+  const paymentHistoryData = {
+    user_id: userId,
+    app_name: app,
+    stripe_customer_id: customerId,
+    stripe_subscription_id: subscriptionId,
+    stripe_invoice_id: session.invoice as string | null,
+    stripe_payment_intent_id: session.payment_intent as string | null,
+    amount: session.amount_total,
+    currency: session.currency,
+    status: 'succeeded',
+    billing_name: customer.name,
+    billing_email: customer.email,
+    billing_phone: customer.phone,
+    billing_address_line1: customer.address?.line1,
+    billing_address_line2: customer.address?.line2,
+    billing_address_city: customer.address?.city,
+    billing_address_state: customer.address?.state,
+    billing_address_postal_code: customer.address?.postal_code,
+    billing_address_country: customer.address?.country,
+    paid_at: new Date().toISOString(),
+  };
+
+  const { error: historyError } = await supabase
+    .from('payment_history')
+    .insert(paymentHistoryData);
+
+  if (historyError) {
+    console.error('Error inserting payment history:', historyError);
+    // Don't throw - payment_history is supplementary, subscription is primary
+  } else {
+    console.log(`Payment history recorded for user ${userId}, app ${app}`);
+  }
 }
 
 /**
@@ -284,4 +330,98 @@ async function handlePaymentFailed(
   }
 
   console.log(`Payment failed for subscription: ${subscriptionId}`);
+}
+
+/**
+ * Handle invoice.paid
+ * Records payment in payment_history (for renewals)
+ */
+async function handleInvoicePaid(
+  supabase: ReturnType<typeof createAdminClient>,
+  invoice: Stripe.Invoice
+) {
+  const subscriptionId = invoice.subscription as string;
+  const customerId = invoice.customer as string;
+
+  if (!subscriptionId) {
+    console.log('[invoice.paid] No subscription ID, skipping');
+    return;
+  }
+
+  // Find the subscription record to get user_id and app_name
+  const { data: existingSub } = await supabase
+    .from('billing_subscriptions')
+    .select('user_id, app_name')
+    .eq('stripe_subscription_id', subscriptionId)
+    .single();
+
+  if (!existingSub) {
+    console.error('[invoice.paid] Could not find subscription record for:', subscriptionId);
+    return;
+  }
+
+  // Get customer details for billing snapshot
+  const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
+
+  const paymentHistoryData = {
+    user_id: existingSub.user_id,
+    app_name: existingSub.app_name,
+    stripe_customer_id: customerId,
+    stripe_subscription_id: subscriptionId,
+    stripe_invoice_id: invoice.id,
+    stripe_payment_intent_id: invoice.payment_intent as string | null,
+    amount: invoice.amount_paid,
+    currency: invoice.currency,
+    status: 'succeeded',
+    billing_name: customer.name,
+    billing_email: customer.email,
+    billing_phone: customer.phone,
+    billing_address_line1: customer.address?.line1,
+    billing_address_line2: customer.address?.line2,
+    billing_address_city: customer.address?.city,
+    billing_address_state: customer.address?.state,
+    billing_address_postal_code: customer.address?.postal_code,
+    billing_address_country: customer.address?.country,
+    paid_at: safeTimestampToISO(invoice.status_transitions?.paid_at) || new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from('payment_history')
+    .insert(paymentHistoryData);
+
+  if (error) {
+    console.error('Error inserting payment history for invoice.paid:', error);
+  } else {
+    console.log(`[invoice.paid] Payment history recorded for user ${existingSub.user_id}, invoice ${invoice.id}`);
+  }
+}
+
+/**
+ * Handle charge.refunded
+ * Updates payment_history status to 'refunded'
+ */
+async function handleChargeRefunded(
+  supabase: ReturnType<typeof createAdminClient>,
+  charge: Stripe.Charge
+) {
+  const paymentIntentId = charge.payment_intent as string;
+
+  if (!paymentIntentId) {
+    console.log('[charge.refunded] No payment_intent ID, skipping');
+    return;
+  }
+
+  // Update payment_history where stripe_payment_intent_id matches
+  const { error, count } = await supabase
+    .from('payment_history')
+    .update({ status: 'refunded' })
+    .eq('stripe_payment_intent_id', paymentIntentId);
+
+  if (error) {
+    console.error('Error updating payment history for refund:', error);
+  } else if (count === 0) {
+    console.log(`[charge.refunded] No payment_history found for payment_intent ${paymentIntentId}`);
+  } else {
+    console.log(`[charge.refunded] Payment marked as refunded for payment_intent ${paymentIntentId}`);
+  }
 }
