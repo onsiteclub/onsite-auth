@@ -8,6 +8,7 @@ interface CheckoutPageProps {
   searchParams: {
     canceled?: string;
     token?: string;
+    user_id?: string; // From /r/[code] redirect (short code flow)
     prefilled_email?: string;
     redirect?: string;
     error?: string; // From /r/[code] redirect
@@ -16,7 +17,7 @@ interface CheckoutPageProps {
 
 export default async function CheckoutPage({ params, searchParams }: CheckoutPageProps) {
   const { app } = params;
-  const { canceled, token, prefilled_email, redirect: returnRedirect, error } = searchParams;
+  const { canceled, token, user_id, prefilled_email, redirect: returnRedirect, error } = searchParams;
 
   // Validate app name
   if (!isValidApp(app)) {
@@ -58,8 +59,39 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     );
   }
 
-  // Token is required
-  if (!token) {
+  // Two valid flows:
+  // 1. Short code flow: /r/[code] redirects with user_id + prefilled_email (no token)
+  // 2. Token flow: Direct access with JWT token
+
+  let userId: string;
+  let userEmail: string;
+
+  if (user_id && prefilled_email) {
+    // Short code flow - already validated by /r/[code]
+    console.log('[Checkout] Short code flow for user:', user_id);
+    userId = user_id;
+    userEmail = prefilled_email;
+  } else if (token) {
+    // Token flow - validate JWT
+    console.log('[Checkout] Token flow, validating for app:', app);
+    const tokenResult = await validateCheckoutToken(token);
+    console.log('[Checkout] Token validation result:', JSON.stringify(tokenResult));
+
+    if (!tokenResult.valid) {
+      console.error('[Checkout] Invalid checkout token:', tokenResult.error);
+      return <CheckoutMessage type="error" appDisplayName={appConfig.displayName} />;
+    }
+
+    // Validate that token app matches URL app
+    if (tokenResult.app !== app) {
+      console.error('Token app mismatch:', tokenResult.app, 'vs', app);
+      return <CheckoutMessage type="error" appDisplayName={appConfig.displayName} />;
+    }
+
+    userId = tokenResult.userId;
+    userEmail = prefilled_email || tokenResult.email;
+  } else {
+    // No valid authentication
     return (
       <div className="min-h-screen bg-onsite-bg flex items-center justify-center p-4">
         <div className="text-center">
@@ -69,25 +101,6 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
       </div>
     );
   }
-
-  // Validate JWT token
-  console.log('[Checkout] Validating token for app:', app);
-  const tokenResult = await validateCheckoutToken(token);
-  console.log('[Checkout] Token validation result:', JSON.stringify(tokenResult));
-
-  if (!tokenResult.valid) {
-    console.error('[Checkout] Invalid checkout token:', tokenResult.error);
-    return <CheckoutMessage type="error" appDisplayName={appConfig.displayName} />;
-  }
-
-  // Validate that token app matches URL app
-  if (tokenResult.app !== app) {
-    console.error('Token app mismatch:', tokenResult.app, 'vs', app);
-    return <CheckoutMessage type="error" appDisplayName={appConfig.displayName} />;
-  }
-
-  const userId = tokenResult.userId;
-  const userEmail = prefilled_email || tokenResult.email;
 
   // If user canceled
   if (canceled === 'true') {

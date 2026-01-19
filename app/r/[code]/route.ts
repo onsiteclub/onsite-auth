@@ -57,10 +57,11 @@ export async function GET(
     // Continue anyway - better to let user checkout than block
   }
 
-  // 6. Redirect para checkout com email preenchido
+  // 6. Redirect para checkout com user_id e email
   const checkoutUrl = new URL(`/checkout/${data.app}`, request.url);
+  checkoutUrl.searchParams.set('user_id', data.user_id);
   checkoutUrl.searchParams.set('prefilled_email', data.email);
 
-  console.log(`[/r/${code}] Redirecting ${data.email} to ${data.app} checkout`);
+  console.log(`[/r/${code}] Redirecting user ${data.user_id} (${data.email}) to ${data.app} checkout`);
   return NextResponse.redirect(checkoutUrl);
 }
