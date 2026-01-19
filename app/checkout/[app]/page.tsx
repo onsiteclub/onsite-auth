@@ -59,20 +59,22 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     );
   }
 
-  // Two valid flows:
-  // 1. Short code flow: /r/[code] redirects with user_id + prefilled_email (no token)
-  // 2. Token flow: Direct access with JWT token
+  // Three valid flows:
+  // 1. Email-only flow: prefilled_email from app (webhook resolves user_id via Supabase Auth)
+  // 2. Short code flow: /r/[code] redirects with user_id + prefilled_email
+  // 3. Token flow: Direct access with JWT token (legacy)
 
-  let userId: string;
+  let userId: string | undefined;
   let userEmail: string;
 
-  if (user_id && prefilled_email) {
-    // Short code flow - already validated by /r/[code]
-    console.log('[Checkout] Short code flow for user:', user_id);
-    userId = user_id;
+  if (prefilled_email) {
+    // Email-only or short code flow
+    // user_id is optional - webhook will resolve it from Supabase Auth if not provided
+    console.log('[Checkout] Email flow for:', prefilled_email, 'user_id:', user_id || 'will be resolved by webhook');
+    userId = user_id; // May be undefined, and that's OK
     userEmail = prefilled_email;
   } else if (token) {
-    // Token flow - validate JWT
+    // Token flow - validate JWT (legacy support)
     console.log('[Checkout] Token flow, validating for app:', app);
     const tokenResult = await validateCheckoutToken(token);
     console.log('[Checkout] Token validation result:', JSON.stringify(tokenResult));
@@ -89,9 +91,9 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     }
 
     userId = tokenResult.userId;
-    userEmail = prefilled_email || tokenResult.email;
+    userEmail = tokenResult.email;
   } else {
-    // No valid authentication
+    // No valid authentication - need at least an email
     return (
       <div className="min-h-screen bg-onsite-bg flex items-center justify-center p-4">
         <div className="text-center">

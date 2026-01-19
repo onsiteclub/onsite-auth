@@ -91,12 +91,12 @@ async function handleCheckoutCompleted(
   session: Stripe.Checkout.Session
 ) {
   const app = session.metadata?.app;
-  const userId = session.metadata?.user_id;
+  let userId = session.metadata?.user_id;
   const customerId = session.customer as string;
   const subscriptionId = session.subscription as string;
 
-  if (!app || !userId) {
-    console.error('Missing app or user_id in session metadata');
+  if (!app) {
+    console.error('Missing app in session metadata');
     return;
   }
 
@@ -105,6 +105,27 @@ async function handleCheckoutCompleted(
 
   // Get customer details (includes address and phone)
   const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
+
+  // If user_id not in metadata, resolve from Supabase Auth by email
+  if (!userId && customer.email) {
+    console.log(`[Webhook] No user_id in metadata, looking up by email: ${customer.email}`);
+    const { data: authData } = await supabase.auth.admin.listUsers();
+    const authUser = authData?.users?.find(u => u.email === customer.email);
+
+    if (authUser) {
+      userId = authUser.id;
+      console.log(`[Webhook] Found user_id from Supabase Auth: ${userId}`);
+    } else {
+      console.error(`[Webhook] No user found in Supabase Auth for email: ${customer.email}`);
+      throw new Error(`User not found in Supabase Auth for email: ${customer.email}`);
+    }
+  }
+
+  // user_id is required at this point
+  if (!userId) {
+    console.error('[Webhook] No user_id available and no email to lookup');
+    throw new Error('Cannot process subscription without user_id');
+  }
 
   // Full subscription data with customer billing information
   const subscriptionData: Record<string, unknown> = {

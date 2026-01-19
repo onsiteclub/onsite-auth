@@ -64,7 +64,7 @@ export async function createCheckoutSession({
   returnRedirect,
 }: {
   app: AppName;
-  userId: string;
+  userId?: string; // Optional - webhook will resolve via Supabase Auth if not provided
   userEmail: string;
   customerId?: string;
   returnRedirect?: string;
@@ -102,12 +102,12 @@ export async function createCheckoutSession({
     cancel_url: `${authUrl}/checkout/${app}?canceled=true`,
     metadata: {
       app,
-      user_id: userId,
+      ...(userId && { user_id: userId }),
     },
     subscription_data: {
       metadata: {
         app,
-        user_id: userId,
+        ...(userId && { user_id: userId }),
       },
     },
     allow_promotion_codes: true,
